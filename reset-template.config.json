@@ -1,0 +1,35 @@
+{
+  "files": [
+    "package.json",
+    "docker-compose.yml",
+    ".github/workflows/backend-docker-publish.yml",
+    "README.md",
+    "DOCKER.md"
+  ],
+  "replacements": [
+    {
+      "from": "cd petition-app/backend",
+      "to": "cd {{APP_NAME}}"
+    },
+    {
+      "from": "supabase-prisma",
+      "to": "{{APP_NAME}}"
+    },
+    {
+      "from": "skillbridge-api",
+      "to": "{{APP_NAME}}-api"
+    },
+    {
+      "from": "skillbridge-redis",
+      "to": "{{APP_NAME}}-redis"
+    },
+    {
+      "from": "skillbridge-backend",
+      "to": "{{APP_NAME}}-backend"
+    },
+    {
+      "from": "petition-app",
+      "to": "{{APP_NAME}}"
+    }
+  ]
+}

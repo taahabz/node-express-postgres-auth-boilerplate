@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                 String          @id @default(uuid())
+  email              String          @unique
+  password           String
+  isEmailVerified    Boolean         @default(false)
+  emailVerifyToken   String?         @unique
+  emailVerifyOtpHash String?
+  emailVerifyOtpExpiry DateTime?
+  emailVerifyOtpAttempts Int         @default(0)
+  emailVerifyOtpLastSentAt DateTime?
+  passwordResetToken String?         @unique
+  passwordResetExpiry DateTime?
+  failedLoginAttempts Int            @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  refreshTokens      RefreshToken[]
+  userRoles          UserRole[]
+  
+  @@index([email])
+  @@index([emailVerifyToken])
+  @@index([emailVerifyOtpExpiry])
+  @@index([passwordResetToken])
+}
+
+model Role {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  description     String?
+  isSystem        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@index([name])
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  key             String           @unique
+  description     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  rolePermissions RolePermission[]
+
+  @@index([key])
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  assignedAt   DateTime   @default(now())
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  isRevoked Boolean  @default(false)
+  
+  @@index([userId])
+  @@index([token])
+}
+
+model TokenBlacklist {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  @@index([token])
+  @@index([expiresAt])
+}
