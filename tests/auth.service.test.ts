@@ -38,7 +38,17 @@ const prismaMock = vi.hoisted(() => {
     },
   };
 
-  mock.$transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(mock));
+  mock.$transaction.mockImplementation(async (arg: unknown) => {
+    if (typeof arg === 'function') {
+      return arg(mock);
+    }
+
+    if (Array.isArray(arg)) {
+      return Promise.all(arg);
+    }
+
+    return arg;
+  });
 
   return mock;
 });
@@ -253,7 +263,7 @@ describe('AuthService', () => {
     expect(profile.permissions).toEqual(['profile:read', 'auth:change-password', 'users:read']);
   });
 
-  it('rotates refresh token and blacklists old one', async () => {
+  it('rotates refresh token and revokes the old one in storage', async () => {
     const refreshToken = generateRefreshToken('u1', 'user@example.com');
 
     prismaMock.refreshToken.findUnique.mockResolvedValue({
@@ -265,8 +275,6 @@ describe('AuthService', () => {
       user: { id: 'u1' },
     });
 
-    prismaMock.tokenBlacklist.findUnique.mockResolvedValue(null);
-
     await authService.refreshAccessToken({ refreshToken });
 
     expect(prismaMock.refreshToken.update).toHaveBeenCalledWith({
@@ -274,16 +282,11 @@ describe('AuthService', () => {
       data: { isRevoked: true },
     });
 
-    expect(prismaMock.tokenBlacklist.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { token: refreshToken },
-      }),
-    );
-
     expect(prismaMock.refreshToken.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.tokenBlacklist.upsert).not.toHaveBeenCalled();
   });
 
-  it('blacklists both access and refresh tokens on logout', async () => {
+  it('revokes the current refresh token and blacklists the access token on logout', async () => {
     const refreshToken = generateRefreshToken('u1', 'user@example.com');
 
     await authService.logout('u1', {
@@ -292,11 +295,16 @@ describe('AuthService', () => {
     });
 
     expect(prismaMock.refreshToken.updateMany).toHaveBeenCalledWith({
-      where: { userId: 'u1' },
+      where: { userId: 'u1', token: refreshToken },
       data: { isRevoked: true },
     });
 
-    expect(prismaMock.tokenBlacklist.upsert).toHaveBeenCalledTimes(2);
+    expect(prismaMock.tokenBlacklist.upsert).toHaveBeenCalledTimes(1);
+    expect(prismaMock.tokenBlacklist.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { token: 'access-token-value' },
+      }),
+    );
   });
 
   it('verifies email with OTP and clears OTP fields', async () => {

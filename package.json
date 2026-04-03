@@ -43,10 +43,13 @@
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
-    "nodemailer": "^6.10.1",
+    "nodemailer": "^8.0.4",
     "rate-limit-redis": "^4.3.0",
     "resend": "^4.7.0",
     "zod": "^3.23.8"
+  },
+  "overrides": {
+    "path-to-regexp": "8.4.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

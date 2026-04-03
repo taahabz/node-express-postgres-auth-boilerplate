@@ -154,6 +154,18 @@ paths:
           description: Profile data
         '401':
           description: Unauthorized
+  /metrics:
+    get:
+      summary: Get runtime request and delivery metrics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Metrics snapshot
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
 components:
   securitySchemes:
     bearerAuth:

@@ -402,7 +402,7 @@ export class AuthService {
       if (decoded.type !== 'refresh') {
         throw new AppError(401, 'Invalid token type');
       }
-    } catch (error) {
+    } catch {
       throw new AppError(401, 'Invalid or expired refresh token');
     }
 
@@ -416,15 +416,6 @@ export class AuthService {
       throw new AppError(401, 'Invalid or expired refresh token');
     }
 
-    // Check if token is blacklisted
-    const isBlacklisted = await prisma.tokenBlacklist.findUnique({
-      where: { token: refreshToken },
-    });
-
-    if (isBlacklisted) {
-      throw new AppError(401, 'Token has been revoked');
-    }
-
     // Generate new access token
     const newAccessToken = generateAccessToken(decoded.userId, decoded.email);
 
@@ -432,23 +423,20 @@ export class AuthService {
     const newRefreshToken = generateRefreshToken(decoded.userId, decoded.email);
     const newRefreshTokenId = generateRefreshTokenId();
 
-    // Revoke old refresh token
-    await prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { isRevoked: true },
-    });
-
-    await this.blacklistToken(storedToken.token, storedToken.expiresAt);
-
-    // Store new refresh token
-    await prisma.refreshToken.create({
-      data: {
-        id: newRefreshTokenId,
-        token: newRefreshToken,
-        userId: decoded.userId,
-        expiresAt: getRefreshTokenExpiry(),
-      },
-    });
+    await prisma.$transaction([
+      prisma.refreshToken.update({
+        where: { id: storedToken.id },
+        data: { isRevoked: true },
+      }),
+      prisma.refreshToken.create({
+        data: {
+          id: newRefreshTokenId,
+          token: newRefreshToken,
+          userId: decoded.userId,
+          expiresAt: getRefreshTokenExpiry(),
+        },
+      }),
+    ]);
 
     return {
       accessToken: newAccessToken,
@@ -553,15 +541,19 @@ export class AuthService {
   }
 
   async logout(userId: string, tokens?: { refreshToken?: string; accessToken?: string }) {
-    // Revoke all refresh tokens for this user
-    await prisma.refreshToken.updateMany({
-      where: { userId },
-      data: { isRevoked: true },
-    });
-
-    // Add tokens to blacklist if provided
     if (tokens?.refreshToken) {
-      await this.blacklistToken(tokens.refreshToken, getRefreshTokenExpiry());
+      await prisma.refreshToken.updateMany({
+        where: {
+          userId,
+          token: tokens.refreshToken,
+        },
+        data: { isRevoked: true },
+      });
+    } else {
+      await prisma.refreshToken.updateMany({
+        where: { userId },
+        data: { isRevoked: true },
+      });
     }
 
     if (tokens?.accessToken) {

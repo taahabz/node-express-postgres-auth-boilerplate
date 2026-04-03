@@ -19,10 +19,11 @@ Production-oriented Node.js + TypeScript backend template using Express, Prisma,
 - Password hashing with `bcryptjs` (`12` rounds)
 - Strong password policy (minimum `12` chars + lower/upper/number/special)
 - Account lockout after `5` failed logins (`30` minutes)
-- Token revocation storage tables (`RefreshToken`, `TokenBlacklist`)
+- Access-token blacklist for logout plus refresh-token revocation in `RefreshToken`
 - Global API rate limit (`100` requests / `15` minutes)
 - Auth route limiter (`5` requests / `15` minutes on protected auth endpoints configured with `authLimiter`)
 - Helmet + CORS + centralized error handling
+- Request metrics endpoint at `GET /api/metrics` for admin users
 
 ### RBAC foundation
 - `Role`, `Permission`, `UserRole`, `RolePermission` models
@@ -33,6 +34,7 @@ Production-oriented Node.js + TypeScript backend template using Express, Prisma,
 ### Infra/devops
 - Multi-stage Dockerfile (deps → build → runtime)
 - Docker Compose for API + Redis
+- In-process request, auth, rate-limit, and email observability hooks
 - CI workflow (install, generate Prisma client, typecheck, build, Docker build validation)
 - GHCR image publish workflow
 
@@ -58,6 +60,9 @@ Base path: `/api`
 - `POST /auth/logout` (requires bearer access token)
 - `POST /auth/password/change` (requires bearer access token)
 - `GET /auth/profile` (requires bearer access token)
+
+### Metrics
+- `GET /metrics` (requires bearer access token with `ADMIN` role)
 
 ---
 
@@ -137,7 +142,7 @@ docker compose down
 - `npm run build` — compile TypeScript
 - `npm run start` — run built app
 - `npm run check` — type check
-- `npm run lint` — currently mapped to type check
+- `npm run lint` — ESLint across the repository
 - `npm run prisma:generate`
 - `npm run prisma:push`
 - `npm run prisma:migrate`
@@ -176,31 +181,11 @@ backend/
 
 ---
 
-## Improvement opportunities (from audit)
+## Operational notes
 
-1. **Harden token revocation flow**
-   - `TokenBlacklist` checks are applied to access-token auth middleware, but logout currently stores the request body refresh token in blacklist. Align blacklist usage (access vs refresh) to avoid ineffective checks.
-
-2. **Apply per-endpoint auth throttling consistently**
-   - `refresh`, `logout`, and some authenticated routes can benefit from dedicated limits (not only global/API limits).
-
-3. **Add automated tests**
-   - No integration/unit test suite exists. Add route/service tests (auth lifecycle, lockout, token rotation, RBAC, error cases).
-
-4. **Move from `prisma db push` workflow to migration-first workflow**
-   - Use versioned migrations (`prisma migrate`) in standard team/prod flow.
-
-5. **Implement real email delivery flows**
-   - Password reset and email verification have placeholders/TODOs; wire provider (SES/Resend/Postmark/etc.) + signed URLs.
-
-6. **Tighten production defaults**
-   - Restrict CORS origins, use production logging format, and avoid leaking raw DB error details from health endpoints.
-
-7. **Separate linting from type checking**
-   - `lint` currently duplicates `check`. Add ESLint/Prettier for style + static quality rules.
-
-8. **Add API contract docs**
-   - Introduce OpenAPI/Swagger for endpoint and schema documentation.
+1. Access tokens are revoked via blacklist checks in the auth middleware; refresh tokens are revoked in `RefreshToken` and rotated on refresh.
+2. Request metrics are in-process for now; if you run multiple API replicas, ship the snapshot to Prometheus/OpenTelemetry before relying on it for alerting.
+3. Production validation still requires `DIRECT_URL`, `JWT_REFRESH_SECRET`, `REDIS_URL`, and `CORS_ORIGIN`.
 
 ---
 

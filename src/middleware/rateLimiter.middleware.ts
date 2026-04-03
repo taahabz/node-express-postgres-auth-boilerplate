@@ -2,6 +2,7 @@ import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import crypto from 'node:crypto';
 import { redis } from '../config/redis.js';
+import { recordRateLimitHit } from '../config/metrics.js';
 
 const createStore = (prefix: string) => {
   const client = redis;
@@ -27,15 +28,33 @@ const baseOptions = {
   passOnStoreError: true,
 };
 
-export const authLimiter = rateLimit({
+const createLimiter = (
+  scope: string,
+  options: Parameters<typeof rateLimit>[0]
+) =>
+  rateLimit({
+    ...baseOptions,
+    ...options,
+    handler: (req, res, _next, limiterOptions) => {
+      recordRateLimitHit(scope);
+
+      res.status(limiterOptions.statusCode ?? 429).json(
+        limiterOptions.message ?? {
+          success: false,
+          error: 'Too many requests, please try again later',
+        }
+      );
+    },
+  });
+
+export const authLimiter = createLimiter('auth', {
   store: createStore('rl:auth:'),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 requests per window
   message: { success: false, error: 'Too many authentication attempts, please try again later' },
-  ...baseOptions,
 });
 
-export const refreshLimiter = rateLimit({
+export const refreshLimiter = createLimiter('refresh', {
   store: createStore('rl:refresh:'),
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -47,10 +66,9 @@ export const refreshLimiter = rateLimit({
     return `refresh:ip:${fallbackIpKey(req.ip)}`;
   },
   message: { success: false, error: 'Too many token refresh attempts, please try again later' },
-  ...baseOptions,
 });
 
-export const logoutLimiter = rateLimit({
+export const logoutLimiter = createLimiter('logout', {
   store: createStore('rl:logout:'),
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -63,10 +81,9 @@ export const logoutLimiter = rateLimit({
     return `logout:ip:${fallbackIpKey(req.ip)}`;
   },
   message: { success: false, error: 'Too many logout attempts, please try again later' },
-  ...baseOptions,
 });
 
-export const passwordResetRequestLimiter = rateLimit({
+export const passwordResetRequestLimiter = createLimiter('password-reset-request', {
   store: createStore('rl:password:request-reset:'),
   windowMs: 15 * 60 * 1000,
   max: 3,
@@ -78,10 +95,9 @@ export const passwordResetRequestLimiter = rateLimit({
     return `password-request:ip:${fallbackIpKey(req.ip)}`;
   },
   message: { success: false, error: 'Too many password reset requests, please try again later' },
-  ...baseOptions,
 });
 
-export const passwordResetLimiter = rateLimit({
+export const passwordResetLimiter = createLimiter('password-reset', {
   store: createStore('rl:password:reset:'),
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -93,10 +109,9 @@ export const passwordResetLimiter = rateLimit({
     return `password-reset:ip:${fallbackIpKey(req.ip)}`;
   },
   message: { success: false, error: 'Too many password reset attempts, please try again later' },
-  ...baseOptions,
 });
 
-export const passwordChangeLimiter = rateLimit({
+export const passwordChangeLimiter = createLimiter('password-change', {
   store: createStore('rl:password:change:'),
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -109,10 +124,9 @@ export const passwordChangeLimiter = rateLimit({
     return `password-change:ip:${fallbackIpKey(req.ip)}`;
   },
   message: { success: false, error: 'Too many password change attempts, please try again later' },
-  ...baseOptions,
 });
 
-export const emailOtpSendLimiter = rateLimit({
+export const emailOtpSendLimiter = createLimiter('email-otp-send', {
   store: createStore('rl:email:otp:send:'),
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -124,10 +138,9 @@ export const emailOtpSendLimiter = rateLimit({
     return `email-otp-send:ip:${fallbackIpKey(req.ip)}`;
   },
   message: { success: false, error: 'Too many OTP requests, please try again later' },
-  ...baseOptions,
 });
 
-export const emailOtpVerifyLimiter = rateLimit({
+export const emailOtpVerifyLimiter = createLimiter('email-otp-verify', {
   store: createStore('rl:email:otp:verify:'),
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -139,13 +152,11 @@ export const emailOtpVerifyLimiter = rateLimit({
     return `email-otp-verify:ip:${fallbackIpKey(req.ip)}`;
   },
   message: { success: false, error: 'Too many OTP verification attempts, please try again later' },
-  ...baseOptions,
 });
 
-export const apiLimiter = rateLimit({
+export const apiLimiter = createLimiter('api', {
   store: createStore('rl:api:'),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // 100 requests per window
   message: { success: false, error: 'Too many requests, please try again later' },
-  ...baseOptions,
 });

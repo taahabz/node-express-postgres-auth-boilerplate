@@ -179,6 +179,7 @@ Check:
 - `docker compose ps`
 - `docker compose logs -f api`
 - Health endpoint: `GET /api/health`
+- Metrics endpoint: `GET /api/metrics` with an `ADMIN` bearer token
 
 ---
 
@@ -225,6 +226,9 @@ Manual deployment update on EC2:
 
 Before first production deploy:
 - `npm run check` passes locally
+- `npm run lint` passes locally
+- `npm test` passes locally
+- `npm audit --omit=dev` reports zero vulnerabilities
 - Workflows run green on `main`
 - `.env` values set correctly on EC2
 - Security Group restricted properly

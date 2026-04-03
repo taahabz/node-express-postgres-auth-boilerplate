@@ -7,6 +7,7 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm ci
 
 FROM node:24-bookworm-slim AS builder

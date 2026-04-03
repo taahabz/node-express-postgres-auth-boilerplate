@@ -6,6 +6,7 @@ import routes from './routes/index.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
 import { apiLimiter } from './middleware/rateLimiter.middleware.js';
 import { env } from './config/env.js';
+import { observabilityMiddleware } from './middleware/observability.middleware.js';
 
 export const createApp = (): Express => {
   const app = express();
@@ -28,11 +29,12 @@ export const createApp = (): Express => {
   );
 
   // Request parsing
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   // Logging
   app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+  app.use(observabilityMiddleware);
 
   // Rate limiting
   app.use(apiLimiter);

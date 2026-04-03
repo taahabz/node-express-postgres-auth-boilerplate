@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
 import { env } from './env.js';
 import { redis } from './redis.js';
+import { recordEmailDelivery } from './metrics.js';
 
 const smtpEnabled = Boolean(
   env.SMTP_HOST &&
@@ -74,15 +75,21 @@ const sendWithResend = async (args: {
     throw new Error('Resend is not configured');
   }
 
-  await resend.emails.send({
-    from: env.MAIL_FROM,
-    to: [args.to],
-    subject: args.subject,
-    text: args.text,
-    html: args.html,
-  });
+  try {
+    await resend.emails.send({
+      from: env.MAIL_FROM,
+      to: [args.to],
+      subject: args.subject,
+      text: args.text,
+      html: args.html,
+    });
 
-  await incrementResendUsage();
+    await incrementResendUsage();
+    recordEmailDelivery('resend', true);
+  } catch (error) {
+    recordEmailDelivery('resend', false);
+    throw error;
+  }
 };
 
 const sendWithSmtp = async (args: {
@@ -95,10 +102,17 @@ const sendWithSmtp = async (args: {
     throw new Error('SMTP transport is not configured');
   }
 
-  await transporter.sendMail({
-    from: env.MAIL_FROM,
-    ...args,
-  });
+  try {
+    await transporter.sendMail({
+      from: env.MAIL_FROM,
+      ...args,
+    });
+
+    recordEmailDelivery('smtp', true);
+  } catch (error) {
+    recordEmailDelivery('smtp', false);
+    throw error;
+  }
 };
 
 export const isEmailEnabled = (): boolean => {
