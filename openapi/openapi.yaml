@@ -2,53 +2,131 @@ openapi: 3.1.0
 info:
   title: SkillBridge Backend API
   version: 1.0.0
-  description: Authentication and health API for the backend template.
+  description: |
+    Production-oriented backend API for authentication, account security, health checks,
+    and runtime metrics.
+
+    Key behaviors:
+    - Access token lifetime: 15 minutes
+    - Refresh token lifetime: 30 days
+    - Refresh tokens are rotated on refresh
+    - Password policy requires 12+ chars with upper/lower/number/special
+    - Email verification uses 6-digit OTP
 servers:
   - url: http://localhost:3000/api
+    description: Local development server
+tags:
+  - name: Health
+    description: Service and database availability checks.
+  - name: Auth
+    description: Authentication, token rotation, account security, and profile endpoints.
+  - name: Metrics
+    description: Runtime telemetry endpoint for privileged users.
 paths:
   /health:
     get:
+      tags: [Health]
+      operationId: getHealth
       summary: Service health check
+      description: Returns API process liveness status.
       responses:
         '200':
           description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
   /health/db:
     get:
+      tags: [Health]
+      operationId: getDatabaseHealth
       summary: Database health check
+      description: Performs a lightweight DB query (`SELECT 1`) to verify connectivity.
       responses:
         '200':
           description: Database is reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DbHealthResponse'
         '500':
           description: Database check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/signup:
     post:
+      tags: [Auth]
+      operationId: signup
       summary: Register a new account
+      description: |
+        Creates a user, assigns the default role, issues access/refresh tokens,
+        and starts email verification with OTP.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/SignupRequest'
+            example:
+              email: user@example.com
+              password: StrongPass123!
       responses:
         '201':
           description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+        '400':
+          description: Validation error or duplicate email
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/ValidationErrorResponse'
   /auth/login:
     post:
+      tags: [Auth]
+      operationId: login
       summary: Authenticate user
+      description: Verifies credentials and returns fresh access/refresh tokens.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: user@example.com
+              password: StrongPass123!
       responses:
         '200':
           description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
         '401':
           description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many attempts / account lock throttling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/refresh:
     post:
+      tags: [Auth]
+      operationId: refreshToken
       summary: Rotate refresh token and issue new access token
+      description: Validates refresh token, revokes old token in storage, and returns new token pair.
       requestBody:
         required: true
         content:
@@ -58,11 +136,22 @@ paths:
       responses:
         '200':
           description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefreshResponse'
         '401':
           description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/verify-email/otp/request:
     post:
+      tags: [Auth]
+      operationId: requestEmailVerificationOtp
       summary: Request verification OTP
+      description: Sends (or re-sends) a verification OTP to the user email with cooldown limits.
       requestBody:
         required: true
         content:
@@ -72,9 +161,22 @@ paths:
       responses:
         '200':
           description: OTP request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '429':
+          description: OTP request throttled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/verify-email/otp/verify:
     post:
+      tags: [Auth]
+      operationId: verifyEmailOtp
       summary: Verify user email with OTP
+      description: Confirms email verification by validating the submitted OTP.
       requestBody:
         required: true
         content:
@@ -84,11 +186,22 @@ paths:
       responses:
         '200':
           description: Verification successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
         '400':
           description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/password/request-reset:
     post:
+      tags: [Auth]
+      operationId: requestPasswordReset
       summary: Request a password reset email
+      description: Sends a password reset link if the account exists (non-enumerating response).
       requestBody:
         required: true
         content:
@@ -98,9 +211,16 @@ paths:
       responses:
         '200':
           description: Reset request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
   /auth/password/reset:
     post:
+      tags: [Auth]
+      operationId: resetPassword
       summary: Reset password using token
+      description: Replaces password using a valid reset token and revokes existing sessions.
       requestBody:
         required: true
         content:
@@ -110,11 +230,22 @@ paths:
       responses:
         '200':
           description: Password reset successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
         '400':
           description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/logout:
     post:
+      tags: [Auth]
+      operationId: logout
       summary: Revoke current session
+      description: Revokes provided refresh token (or all user refresh sessions) and blacklists access token.
       security:
         - bearerAuth: []
       requestBody:
@@ -126,11 +257,22 @@ paths:
       responses:
         '200':
           description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/password/change:
     post:
+      tags: [Auth]
+      operationId: changePassword
       summary: Change password for authenticated user
+      description: Verifies current password, applies a new password, and revokes refresh sessions.
       security:
         - bearerAuth: []
       requestBody:
@@ -142,30 +284,64 @@ paths:
       responses:
         '200':
           description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/profile:
     get:
+      tags: [Auth]
+      operationId: getProfile
       summary: Get authenticated user profile
+      description: Returns profile and effective RBAC data for current authenticated user.
       security:
         - bearerAuth: []
       responses:
         '200':
           description: Profile data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /metrics:
     get:
+      tags: [Metrics]
+      operationId: getMetrics
       summary: Get runtime request and delivery metrics
+      description: Returns in-process counters for requests, rate limits, and email delivery (ADMIN only).
       security:
         - bearerAuth: []
       responses:
         '200':
           description: Metrics snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     bearerAuth:
@@ -173,6 +349,33 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    HealthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            status:
+              type: string
+              example: ok
+    DbHealthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            status:
+              type: string
+              example: ok
+            db:
+              type: string
+              example: up
     SignupRequest:
       type: object
       required: [email, password]
@@ -183,6 +386,7 @@ components:
         password:
           type: string
           minLength: 12
+          description: Must include lower/upper/number/special characters.
     LoginRequest:
       type: object
       required: [email, password]
@@ -214,6 +418,7 @@ components:
           format: email
         otp:
           type: string
+          pattern: '^\\d{6}$'
     PasswordResetRequest:
       type: object
       required: [email]
@@ -244,3 +449,170 @@ components:
       properties:
         refreshToken:
           type: string
+          description: Optional. If omitted, all refresh tokens for user are revoked.
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        isEmailVerified:
+          type: boolean
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        roles:
+          type: array
+          items:
+            type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    AuthTokensPayload:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            email:
+              type: string
+              format: email
+            isEmailVerified:
+              type: boolean
+            createdAt:
+              type: string
+              format: date-time
+            roles:
+              type: array
+              items:
+                type: string
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        message:
+          type: string
+          nullable: true
+    AuthTokensResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/AuthTokensPayload'
+    TokenRefreshPayload:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+    TokenRefreshResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/TokenRefreshPayload'
+    MessageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+    ProfileResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/UserProfile'
+    MetricsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            uptimeSeconds:
+              type: integer
+            requests:
+              type: object
+              properties:
+                total:
+                  type: integer
+                errors:
+                  type: integer
+                byRoute:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                      errors:
+                        type: integer
+                      averageDurationMs:
+                        type: number
+            rateLimits:
+              type: object
+              additionalProperties:
+                type: integer
+            emails:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  success:
+                    type: integer
+                  failure:
+                    type: integer
+    ValidationErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: Validation error
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              message:
+                type: string
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: Unauthorized

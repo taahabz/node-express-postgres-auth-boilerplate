@@ -21,6 +21,7 @@ RUN apt-get update \
 COPY --from=deps /app/node_modules ./node_modules
 COPY tsconfig.json ./
 COPY prisma ./prisma
+COPY openapi ./openapi
 COPY src ./src
 COPY package*.json ./
 
@@ -40,6 +41,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/openapi ./openapi
 COPY --from=builder /app/package*.json ./
 
 EXPOSE 3000

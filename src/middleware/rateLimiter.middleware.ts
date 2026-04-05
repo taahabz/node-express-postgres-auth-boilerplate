@@ -12,7 +12,11 @@ const createStore = (prefix: string) => {
     prefix,
     sendCommand: (...args: string[]) => {
       const [command, ...commandArgs] = args;
-      return client.call(command, ...commandArgs) as Promise<any>;
+      try {
+        return client.call(command, ...commandArgs) as Promise<any>;
+      } catch (error) {
+        return Promise.reject(error);
+      }
     },
   });
 };

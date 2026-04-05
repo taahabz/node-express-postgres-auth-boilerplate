@@ -3,9 +3,10 @@ import { env } from './env.js';
 
 export const redis = env.REDIS_URL
   ? new Redis(env.REDIS_URL, {
-      maxRetriesPerRequest: 1,
+      maxRetriesPerRequest: null,
       enableOfflineQueue: true,
-      lazyConnect: false,
+      lazyConnect: true,
+      connectTimeout: 5000,
     })
   : null;
 
