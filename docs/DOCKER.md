@@ -1,5 +1,23 @@
 # Docker + Redis Setup
 
+## Quick path
+
+If you only want to start the app quickly:
+
+```bash
+cp example.env .env
+docker compose up -d --build
+curl http://localhost:3000/api/health
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+---
+
 ## 1) Prepare env
 
 ```bash

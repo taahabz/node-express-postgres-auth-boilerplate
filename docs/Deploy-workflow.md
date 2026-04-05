@@ -2,6 +2,19 @@
 
 This document defines a reproducible deployment flow for template users who clone/reset this repo and deploy to their own VM.
 
+## Quick deploy checklist
+
+1. Ensure repo is initialized from template and pushed to `main`.
+2. Ensure VM is reachable by SSH and has Docker + Compose installed.
+3. Add required GitHub secrets (`EC2_*`, `GHCR_*`).
+4. Create `<DEPLOY_PATH>/.env` on server.
+5. Push to `main`.
+6. Verify both workflows:
+  - `Backend Docker Publish`
+  - `Backend Deploy (EC2)`
+
+If you need local-only startup first, use [DOCKER.md](DOCKER.md).
+
 Supported targets in this guide:
 - AWS EC2 (Ubuntu)
 - GCP Compute Engine (Ubuntu)

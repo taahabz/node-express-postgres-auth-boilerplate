@@ -2,6 +2,16 @@
 
 This guide is for this backend template when used as its own repo.
 
+## Startup checklist (high level)
+
+1. Initialize template repo (`npm run reset --name ...`).
+2. Push to your own GitHub repo (`main`).
+3. Add required GitHub secrets for deploy workflow.
+4. Prepare EC2 host (Docker + deploy user + `.env`).
+5. Push to `main` and verify publish + deploy workflows.
+
+For complete automated deploy steps (including GCP differences), continue with [Deploy-workflow.md](Deploy-workflow.md).
+
 ## 1) One-time template initialization
 
 After cloning this template:

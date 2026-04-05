@@ -1,11 +1,52 @@
-# Backend Template Audit (April 4, 2026)
+# Backend Template
 
 Production-oriented Node.js + TypeScript backend template using Express, Prisma, PostgreSQL (Neon-ready), JWT auth, RBAC scaffolding, Redis-backed rate limiting, Docker, and GitHub Actions.
 
 ---
 
+## Quick start (first 15 minutes)
+
+### 1) Initialize from template
+
+```bash
+npm install
+npm run reset --name your-app-name
+git add .
+git commit -m "chore: initialize from template"
+```
+
+### 2) Configure environment
+
+```bash
+cp example.env .env
+```
+
+Set at minimum:
+- `DATABASE_URL`
+- `JWT_SECRET`
+
+Recommended now:
+- `DIRECT_URL`
+- `JWT_REFRESH_SECRET`
+- `REDIS_URL`
+- `REDIS_PASSWORD`
+
+### 3) Run locally
+
+```bash
+npm run prisma:generate
+npm run prisma:push
+npm run dev
+```
+
+Health check:
+- `GET http://localhost:3000/api/health`
+
+---
+
 ## Documentation map (start here)
 
+- Docs home: [docs/README.md](docs/README.md)
 - Local Docker usage: [docs/DOCKER.md](docs/DOCKER.md)
 - Server bootstrap (GitHub + EC2): [docs/server-setup.md](docs/server-setup.md)
 - End-to-end deployment workflow (private GHCR + SSH, AWS/GCP differences): [docs/Deploy-workflow.md](docs/Deploy-workflow.md)
@@ -200,6 +241,7 @@ backend/
 ├── Dockerfile
 ├── example.env
 ├── docs/
+│   ├── README.md
 │   ├── DOCKER.md
 │   ├── Deploy-workflow.md
 │   └── server-setup.md
