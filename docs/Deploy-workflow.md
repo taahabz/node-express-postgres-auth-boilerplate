@@ -10,8 +10,8 @@ This document defines a reproducible deployment flow for template users who clon
 4. Create `<DEPLOY_PATH>/.env` on server.
 5. Push to `main`.
 6. Verify both workflows:
-  - `Backend Docker Publish`
-  - `Backend Deploy (EC2)`
+  - `Backend • Build & Push Image (GHCR)`
+  - `Backend • Deploy to VM (SSH)`
 
 If you need local-only startup first, use [DOCKER.md](DOCKER.md).
 
@@ -257,7 +257,7 @@ Template workflow still works exactly the same:
 
 Deploy workflow trigger logic:
 - Automatic: on successful completion of publish workflow on `main`
-- Manual: Actions → "Backend Deploy (EC2)" → Run workflow
+- Manual: Actions → "Backend • Deploy to VM (SSH)" → Run workflow
 
 Remote deploy commands executed by workflow:
 

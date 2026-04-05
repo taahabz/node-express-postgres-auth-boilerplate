@@ -1,4 +1,4 @@
-name: Backend Deploy (EC2)
+name: Backend • Deploy to VM (SSH)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: latest
         type: string
   workflow_run:
-    workflows: ["Backend Docker Publish"]
+    workflows: ["Backend • Build & Push Image (GHCR)"]
     types: [completed]
     branches: [main]
 

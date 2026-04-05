@@ -1,4 +1,4 @@
-name: Backend Docker Publish
+name: Backend • Build & Push Image (GHCR)
 
 on:
   workflow_dispatch:
