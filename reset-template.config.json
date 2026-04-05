@@ -2,9 +2,13 @@
   "files": [
     "package.json",
     "docker-compose.yml",
+    "docker-compose.deploy.yml",
     ".github/workflows/backend-docker-publish.yml",
+    ".github/workflows/backend-deploy.yml",
     "README.md",
-    "DOCKER.md"
+    "docs/DOCKER.md",
+    "docs/server-setup.md",
+    "docs/Deploy-workflow.md"
   ],
   "replacements": [
     {

@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": "backend-template",
+    "runtime": {
+      "node": ">=24.14.1",
+      "npm": ">=11.12.1",
+      "module": "esm",
+      "language": "typescript"
+    },
+    "frameworks": ["express@5", "prisma@5", "vitest@2"],
+    "primaryPaths": {
+      "source": "src",
+      "routes": "src/routes",
+      "middleware": "src/middleware",
+      "services": "src/services",
+      "validators": "src/validators",
+      "db": "prisma/schema.prisma",
+      "openapi": "openapi/openapi.yaml",
+      "docs": "docs",
+      "workflows": ".github/workflows"
+    }
+  },
+  "commands": {
+    "install": "npm ci",
+    "dev": "npm run dev",
+    "build": "npm run build",
+    "typecheck": "npm run check",
+    "lint": "npm run lint",
+    "test": "npm test",
+    "prismaGenerate": "npm run prisma:generate"
+  },
+  "api": {
+    "basePrefix": "/api",
+    "routeMounts": [
+      "/health",
+      "/auth",
+      "/metrics",
+      "/ (docs/openapi)"
+    ]
+  },
+  "deploy": {
+    "ghcr": {
+      "registry": "ghcr.io",
+      "imagePattern": "ghcr.io/<owner>/<app-name>-backend",
+      "visibilityPolicy": "private-required"
+    },
+    "workflows": {
+      "ci": ".github/workflows/backend-ci.yml",
+      "publish": ".github/workflows/backend-docker-publish.yml",
+      "deploy": ".github/workflows/backend-deploy.yml"
+    },
+    "compose": {
+      "local": "docker-compose.yml",
+      "deploy": "docker-compose.deploy.yml"
+    },
+    "requiredSecrets": [
+      "EC2_HOST",
+      "EC2_USER",
+      "EC2_SSH_PRIVATE_KEY",
+      "EC2_HOST_FINGERPRINT",
+      "GHCR_USERNAME",
+      "GHCR_PAT"
+    ],
+    "optionalSecrets": {
+      "EC2_PORT": "22",
+      "DEPLOY_PATH": "/opt/apps/<repo-name>"
+    }
+  },
+  "envContract": {
+    "productionRequired": [
+      "DIRECT_URL",
+      "JWT_REFRESH_SECRET",
+      "REDIS_URL",
+      "CORS_ORIGIN"
+    ],
+    "providerRules": [
+      "EMAIL_PROVIDER=resend => RESEND_API_KEY required",
+      "EMAIL_PROVIDER=nodemailer => full SMTP + MAIL_FROM required",
+      "EMAIL_PROVIDER=auto => RESEND_API_KEY and full SMTP + MAIL_FROM required"
+    ]
+  },
+  "templateInvariants": [
+    "Keep docs links valid after file moves",
+    "Update reset-template.config.json when template-consumed paths change",
+    "Avoid app-specific hardcoding; preserve clone/reset reproducibility"
+  ]
+}

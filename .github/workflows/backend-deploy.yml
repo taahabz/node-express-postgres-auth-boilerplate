@@ -1,0 +1,106 @@
+name: Backend Deploy (EC2)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Docker image tag to deploy (default latest)
+        required: false
+        default: latest
+        type: string
+  workflow_run:
+    workflows: ["Backend Docker Publish"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: backend-deploy-production
+      cancel-in-progress: true
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/skillbridge-backend
+      DEPLOY_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || format('/opt/apps/{0}', github.event.repository.name) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          EC2_HOST_FINGERPRINT: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          set -euo pipefail
+          missing=0
+
+          for var in EC2_HOST EC2_USER EC2_SSH_PRIVATE_KEY EC2_HOST_FINGERPRINT GHCR_USERNAME GHCR_PAT; do
+            if [ -z "${!var:-}" ]; then
+              echo "::error::Missing required secret: $var"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Upload deployment compose file
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.EC2_PORT != '' && secrets.EC2_PORT || '22' }}
+          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          target: ${{ env.DEPLOY_PATH }}
+          source: docker-compose.deploy.yml
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          DEPLOY_TAG: ${{ env.DEPLOY_TAG }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.EC2_PORT != '' && secrets.EC2_PORT || '22' }}
+          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          script_stop: true
+          envs: GHCR_USERNAME,GHCR_PAT,DEPLOY_PATH,IMAGE_NAME,DEPLOY_TAG
+          script: |
+            set -euo pipefail
+
+            mkdir -p "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+
+            if [ ! -f .env ]; then
+              echo "Missing .env in $DEPLOY_PATH"
+              exit 1
+            fi
+
+            API_IMAGE="${IMAGE_NAME}:${DEPLOY_TAG}"
+
+            echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+            export API_IMAGE
+            docker compose -f docker-compose.deploy.yml pull api
+            docker compose -f docker-compose.deploy.yml up -d --remove-orphans
+            docker compose -f docker-compose.deploy.yml ps
+
+            docker image prune -f

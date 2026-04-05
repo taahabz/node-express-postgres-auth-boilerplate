@@ -18,8 +18,8 @@ After cloning this template:
    - `git push -u origin main`
 
 What this reset does:
-- Applies minimal renames from [reset-template.config.json](reset-template.config.json)
-- Writes [ .template-reset.json](.template-reset.json) with your app name
+- Applies minimal renames from [reset-template.config.json](../reset-template.config.json)
+- Writes [ .template-reset.json](../.template-reset.json) with your app name
 - Removes old git history and re-initializes repo on `main`
 
 ---
@@ -36,23 +36,26 @@ What this reset does:
 
 ## 2.2 Workflows included
 
-- CI: [ .github/workflows/backend-ci.yml](.github/workflows/backend-ci.yml)
+- CI: [ .github/workflows/backend-ci.yml](../.github/workflows/backend-ci.yml)
   - Runs on push/pull request to `main`
   - Runs install + Prisma generate + type check
-- Docker publish: [ .github/workflows/backend-docker-publish.yml](.github/workflows/backend-docker-publish.yml)
+- Docker publish: [ .github/workflows/backend-docker-publish.yml](../.github/workflows/backend-docker-publish.yml)
   - Runs on push to `main` (and manual dispatch)
   - Publishes image to GHCR
+- Deploy: [ .github/workflows/backend-deploy.yml](../.github/workflows/backend-deploy.yml)
+   - Runs automatically after successful Docker publish on `main`
+   - Can also be triggered manually from Actions tab
+   - SSHes to EC2 and runs Docker Compose deploy
 
 ## 2.3 GHCR package visibility
 
 Published image path format:
 - `ghcr.io/<github-owner>/<app-name>-backend`
 
-If deployment host cannot authenticate to private GHCR packages, either:
-- make package public, or
-- use a PAT on server with `read:packages`.
+This template expects GHCR package to stay private.
+Use a PAT on server with `read:packages`.
 
-## 2.4 GitHub secrets (recommended now)
+## 2.4 GitHub secrets (required)
 
 Add these in **Settings → Secrets and variables → Actions**:
 
@@ -60,10 +63,12 @@ Add these in **Settings → Secrets and variables → Actions**:
 - `EC2_USER` (for example `ubuntu`)
 - `EC2_SSH_PRIVATE_KEY` (private key content for your EC2 key pair)
 - `EC2_PORT` (optional, default `22`)
+- `EC2_HOST_FINGERPRINT` (SSH host key fingerprint, for strict host verification)
+- `DEPLOY_PATH` (optional, default `/opt/apps/<repo-name>`)
 - `GHCR_USERNAME` (your GitHub username)
 - `GHCR_PAT` (PAT with at least `read:packages` for server pulls)
 
-These are required when you add an EC2 deploy workflow.
+These are required for the included EC2 deploy workflow.
 
 ## 2.5 What is `GHCR_PAT` and how to get it
 
@@ -202,12 +207,22 @@ For local host testing (outside container), use:
 
 Current state:
 - GitHub Actions builds/tests and publishes Docker image on `main`.
-- EC2 deploy is still manual unless a dedicated deploy workflow is added.
+- GitHub Actions deploy workflow updates EC2 automatically after successful publish.
 
-Manual deployment update on EC2:
-1. Pull latest code on server
-2. Rebuild/restart:
-   - `docker compose up -d --build`
+Automatic deployment update (recommended):
+1. Push to `main`
+2. Wait for publish workflow to complete
+3. Deploy workflow connects to EC2 and runs:
+   - `docker compose -f docker-compose.deploy.yml pull api`
+   - `docker compose -f docker-compose.deploy.yml up -d --remove-orphans`
+
+Manual fallback deployment on EC2:
+1. Export image name and tag
+   - `export API_IMAGE=ghcr.io/<owner>/<app-name>-backend:<tag>`
+2. Login and deploy
+   - `echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin`
+   - `docker compose -f docker-compose.deploy.yml pull api`
+   - `docker compose -f docker-compose.deploy.yml up -d --remove-orphans`
 3. Verify health endpoint
 
 ---
@@ -242,7 +257,7 @@ If you want Redis to survive deploys and reduce data-loss risk:
 
 1. Keep the named volume (`redis_data`) and never run:
    - `docker compose down -v`
-2. Keep AOF enabled and snapshots enabled (already configured in [docker-compose.yml](docker-compose.yml)).
+2. Keep AOF enabled and snapshots enabled (already configured in [docker-compose.yml](../docker-compose.yml)).
 3. Keep Redis port local-only on EC2 host (`127.0.0.1:6379`) to reduce attack surface.
 4. Use EBS-backed storage for the EC2 instance and enable scheduled EBS snapshots.
 5. During deploys, use:

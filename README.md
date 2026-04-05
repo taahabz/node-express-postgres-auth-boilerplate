@@ -4,6 +4,20 @@ Production-oriented Node.js + TypeScript backend template using Express, Prisma,
 
 ---
 
+## Documentation map (start here)
+
+- Local Docker usage: [docs/DOCKER.md](docs/DOCKER.md)
+- Server bootstrap (GitHub + EC2): [docs/server-setup.md](docs/server-setup.md)
+- End-to-end deployment workflow (private GHCR + SSH, AWS/GCP differences): [docs/Deploy-workflow.md](docs/Deploy-workflow.md)
+- Agent context pack: [.agent/README.md](.agent/README.md)
+
+GitHub workflow files:
+- CI checks: [ .github/workflows/backend-ci.yml](.github/workflows/backend-ci.yml)
+- Docker publish to GHCR: [ .github/workflows/backend-docker-publish.yml](.github/workflows/backend-docker-publish.yml)
+- Deploy to VM over SSH: [ .github/workflows/backend-deploy.yml](.github/workflows/backend-deploy.yml)
+
+---
+
 ## What this template includes (verified)
 
 ### Core stack
@@ -34,9 +48,11 @@ Production-oriented Node.js + TypeScript backend template using Express, Prisma,
 ### Infra/devops
 - Multi-stage Dockerfile (deps → build → runtime)
 - Docker Compose for API + Redis
+- Deploy Compose for prebuilt images
 - In-process request, auth, rate-limit, and email observability hooks
 - CI workflow (install, generate Prisma client, typecheck, build, Docker build validation)
 - GHCR image publish workflow
+- Automated VM deploy workflow over SSH
 
 ### Template utilities
 - `npm run reset --name your-app-name` to reset template identity + git history
@@ -155,6 +171,14 @@ docker compose down
 
 ```text
 backend/
+├── .agent/
+│   ├── README.md
+│   ├── context.json
+│   ├── project-context.md
+│   ├── operations-playbook.md
+│   ├── api-surface.md
+│   ├── change-impact-map.md
+│   └── handoff-template.md
 ├── prisma/
 │   └── schema.prisma
 ├── scripts/
@@ -172,10 +196,13 @@ backend/
 │   └── prisma.ts
 ├── .github/workflows/
 ├── docker-compose.yml
+├── docker-compose.deploy.yml
 ├── Dockerfile
 ├── example.env
-├── DOCKER.md
-├── server-setup.md
+├── docs/
+│   ├── DOCKER.md
+│   ├── Deploy-workflow.md
+│   └── server-setup.md
 └── reset-template.config.json
 ```
 
