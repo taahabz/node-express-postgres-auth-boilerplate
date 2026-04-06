@@ -1,32 +1,20 @@
-name: Backend • Deploy to VM (SSH)
+name: Backend • Deploy to EC2 (Full Production)
 
 on:
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: Docker image tag to deploy (default latest)
-        required: false
-        default: latest
-        type: string
-  workflow_run:
-    workflows: ["Backend • Build & Push Image (GHCR)"]
-    types: [completed]
-    branches: [main]
+  push:
+    branches:
+      - main
 
 jobs:
   deploy:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
     concurrency:
-      group: backend-deploy-production
+      group: backend-deploy-ec2
       cancel-in-progress: true
     env:
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/skillbridge-backend
-      DEPLOY_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || format('/opt/apps/{0}', github.event.repository.name) }}
 
     steps:
@@ -35,17 +23,15 @@ jobs:
 
       - name: Validate required secrets
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          EC2_HOST_FINGERPRINT: ${{ secrets.EC2_HOST_FINGERPRINT }}
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST_FINGERPRINT: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
         run: |
           set -euo pipefail
           missing=0
 
-          for var in EC2_HOST EC2_USER EC2_SSH_PRIVATE_KEY EC2_HOST_FINGERPRINT GHCR_USERNAME GHCR_PAT; do
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_HOST_FINGERPRINT; do
             if [ -z "${!var:-}" ]; then
               echo "::error::Missing required secret: $var"
               missing=1
@@ -56,33 +42,58 @@ jobs:
             exit 1
           fi
 
-      - name: Upload deployment compose file
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run check
+
+      - name: Build app
+        run: npm run build
+
+      - name: Validate Docker build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+
+      - name: Upload app source
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: ${{ secrets.EC2_PORT != '' && secrets.EC2_PORT || '22' }}
-          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           target: ${{ env.DEPLOY_PATH }}
-          source: docker-compose.deploy.yml
+          source: Dockerfile,package.json,package-lock.json,tsconfig.json,prisma,openapi,src,docker-compose.yml
 
-      - name: Deploy on EC2
+      - name: Sync database and deploy on EC2
         uses: appleboy/ssh-action@v1.2.0
         env:
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          GHCR_PAT: ${{ secrets.GHCR_PAT }}
           DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          DEPLOY_TAG: ${{ env.DEPLOY_TAG }}
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: ${{ secrets.EC2_PORT != '' && secrets.EC2_PORT || '22' }}
-          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           script_stop: true
-          envs: GHCR_USERNAME,GHCR_PAT,DEPLOY_PATH,IMAGE_NAME,DEPLOY_TAG
+          envs: DEPLOY_PATH
           script: |
             set -euo pipefail
 
@@ -94,13 +105,31 @@ jobs:
               exit 1
             fi
 
-            API_IMAGE="${IMAGE_NAME}:${DEPLOY_TAG}"
+            required_vars="DATABASE_URL DIRECT_URL JWT_SECRET JWT_REFRESH_SECRET REDIS_URL CORS_ORIGIN"
+            for var in $required_vars; do
+              if ! grep -Eq "^${var}=.+" .env; then
+                echo "Missing or empty required env var: $var"
+                exit 1
+              fi
+            done
 
-            echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
-
-            export API_IMAGE
-            docker compose -f docker-compose.deploy.yml pull api
-            docker compose -f docker-compose.deploy.yml up -d --remove-orphans
-            docker compose -f docker-compose.deploy.yml ps
+            docker build --target builder -t backend-workflow-builder .
+            docker run --rm --env-file .env backend-workflow-builder npm run prisma:migrate:deploy
+            docker run --rm --env-file .env backend-workflow-builder npm run prisma:push
+            docker compose up -d --build --remove-orphans
+            docker compose ps
 
             docker image prune -f
+
+      - name: Check health
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            curl -fsS http://localhost:3000/api/health

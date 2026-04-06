@@ -3,12 +3,10 @@
     "package.json",
     "docker-compose.yml",
     "docker-compose.deploy.yml",
-    ".github/workflows/backend-docker-publish.yml",
     ".github/workflows/backend-deploy.yml",
     "README.md",
     "docs/DOCKER.md",
-    "docs/server-setup.md",
-    "docs/Deploy-workflow.md"
+    "docs/setup-action-workflows.md"
   ],
   "replacements": [
     {

@@ -86,26 +86,17 @@ From [../prisma/schema.prisma](../prisma/schema.prisma):
 
 ## Container/deploy model
 - Local compose (build from local source): [../docker-compose.yml](../docker-compose.yml)
-- Deploy compose (pull prebuilt image): [../docker-compose.deploy.yml](../docker-compose.deploy.yml)
-- CI validation: [../.github/workflows/backend-ci.yml](../.github/workflows/backend-ci.yml)
-- GHCR publish: [../.github/workflows/backend-docker-publish.yml](../.github/workflows/backend-docker-publish.yml)
-- VM deploy: [../.github/workflows/backend-deploy.yml](../.github/workflows/backend-deploy.yml)
-
-## GHCR policy
-- GHCR package should remain private.
-- Server pulls image using `GHCR_USERNAME` + `GHCR_PAT`.
+- EC2 deploy: [../.github/workflows/backend-deploy.yml](../.github/workflows/backend-deploy.yml)
 
 ## Deployment secret contract
 Required secrets:
-- `EC2_HOST`
-- `EC2_USER`
-- `EC2_SSH_PRIVATE_KEY`
-- `EC2_HOST_FINGERPRINT`
-- `GHCR_USERNAME`
-- `GHCR_PAT`
+- `DEPLOY_HOST`
+- `DEPLOY_USER`
+- `DEPLOY_SSH_KEY`
+- `DEPLOY_HOST_FINGERPRINT`
 
 Optional secrets:
-- `EC2_PORT` (default `22`)
+- `DEPLOY_PORT` (default `22`)
 - `DEPLOY_PATH` (default `/opt/apps/<repo-name>`)
 
 ## Environment contract (production critical)
@@ -124,7 +115,12 @@ Conditional provider requirements:
 - Keep template-friendly naming and avoid app-specific hardcoding.
 - Preserve reset behavior in [../reset-template.config.json](../reset-template.config.json).
 - If file paths move, update docs links and reset mapping.
-- Keep deploy workflow generic for both AWS EC2 and GCP VM usage.
+- Keep the deploy workflow generic for EC2 or other SSH-reachable VMs.
+- Keep the production workflow single-file and end-to-end when possible.
+
+## Primary deploy docs
+- Single step-by-step guide: [../docs/setup-action-workflows.md](../docs/setup-action-workflows.md)
+- Local Docker guide: [../docs/DOCKER.md](../docs/DOCKER.md)
 
 ## Agent constraints
 - Preserve template reproducibility.
