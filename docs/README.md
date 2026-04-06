@@ -1,10 +1,10 @@
 # Docs home
 
-Use this index as the startup path for new template users.
+Use this quick index.
 
 ## Recommended order
 1. [DOCKER.md](DOCKER.md) — get local API + Redis running quickly.
-2. [setup-action-workflows.md](setup-action-workflows.md) — step-by-step EC2 and GitHub Actions production setup.
+2. [setup-action-workflows.md](setup-action-workflows.md) — simple EC2 + GitHub Actions deploy steps.
 
 ## Fast paths by goal
 
@@ -22,4 +22,3 @@ Use this index as the startup path for new template users.
 
 ## Required production assumption
 - Server receives source over SSH and builds locally with Docker Compose.
-- Keep the deploy host fingerprint secret for strict host verification.

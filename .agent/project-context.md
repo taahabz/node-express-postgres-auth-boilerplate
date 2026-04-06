@@ -93,7 +93,6 @@ Required secrets:
 - `DEPLOY_HOST`
 - `DEPLOY_USER`
 - `DEPLOY_SSH_KEY`
-- `DEPLOY_HOST_FINGERPRINT`
 
 Optional secrets:
 - `DEPLOY_PORT` (default `22`)

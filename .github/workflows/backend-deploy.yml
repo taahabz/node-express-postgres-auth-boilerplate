@@ -26,12 +26,11 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST_FINGERPRINT: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
         run: |
           set -euo pipefail
           missing=0
 
-          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_HOST_FINGERPRINT; do
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY; do
             if [ -z "${!var:-}" ]; then
               echo "::error::Missing required secret: $var"
               missing=1
@@ -78,7 +77,6 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
-          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           target: ${{ env.DEPLOY_PATH }}
           source: Dockerfile,package.json,package-lock.json,tsconfig.json,prisma,openapi,src,docker-compose.yml
 
@@ -91,7 +89,6 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
-          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           script_stop: true
           envs: DEPLOY_PATH
           script: |
@@ -128,7 +125,6 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
-          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           script_stop: true
           script: |
             set -euo pipefail
