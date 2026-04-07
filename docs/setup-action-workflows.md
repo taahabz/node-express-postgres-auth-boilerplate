@@ -34,35 +34,24 @@ sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-### 1.4 Create deploy user
+### 1.4 Use existing EC2 `.pem` key (default)
 
-```bash
-sudo adduser --disabled-password --gecos "" deploy
-sudo usermod -aG docker deploy
-sudo mkdir -p /home/deploy/.ssh
-sudo chown -R deploy:deploy /home/deploy/.ssh
-sudo chmod 700 /home/deploy/.ssh
-```
+Use the same `.pem` key you already use to SSH into EC2.
 
-### 1.5 Add SSH key for GitHub Actions
-As `deploy` user:
+Set in GitHub Actions secrets:
+- `DEPLOY_SSH_KEY` = full content of your `.pem` file
+- `DEPLOY_USER` = `ubuntu` (or your current SSH user)
 
-```bash
-mkdir -p ~/.ssh
-chmod 700 ~/.ssh
-nano ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/authorized_keys
-```
+In this default flow, you do **not** need to derive a public key.
 
-Paste the **public key** for the private key that will be saved in `DEPLOY_SSH_KEY` secret.
-
-### 1.6 Create deploy directory
+### 1.5 Create deploy directory
 
 ```bash
 sudo mkdir -p /opt/apps/skillbridge-backend
-sudo chown -R deploy:deploy /opt/apps/skillbridge-backend
+sudo chown -R ubuntu:ubuntu /opt/apps/skillbridge-backend
 ```
 
+If you use a different `DEPLOY_USER`, replace `ubuntu:ubuntu` with that user.
 If you use custom `DEPLOY_PATH`, create and own that path instead.
 
 ---
@@ -73,11 +62,15 @@ Open: GitHub repo → Settings → Secrets and variables → Actions.
 
 ### Required secrets
 - `DEPLOY_HOST`: EC2 public IP or DNS
-- `DEPLOY_USER`: SSH user on EC2 (usually `deploy`)
 - `DEPLOY_SSH_KEY`: full private key content (including BEGIN/END lines)
 - `ENV_FILE`: full production `.env` content (multiline)
 
+How to get values:
+- `DEPLOY_SSH_KEY`: open your EC2 `.pem` file and paste full file content
+- `ENV_FILE`: paste full production `.env` content (all lines)
+
 ### Optional secrets
+- `DEPLOY_USER`: SSH user (default `ubuntu`)
 - `DEPLOY_PORT`: SSH port (default `22`)
 - `DEPLOY_PATH`: app path on EC2 (default `/opt/apps/<repo-name>`)
 

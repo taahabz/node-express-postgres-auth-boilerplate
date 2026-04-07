@@ -55,6 +55,7 @@ jobs:
       cancel-in-progress: true
     env:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || format('/opt/apps/{0}', github.event.repository.name) }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER != '' && secrets.DEPLOY_USER || 'ubuntu' }}
 
     steps:
       - name: Checkout
@@ -63,14 +64,13 @@ jobs:
       - name: Validate required secrets
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           ENV_FILE: ${{ secrets.ENV_FILE }}
         run: |
           set -euo pipefail
           missing=0
 
-          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY ENV_FILE; do
+          for var in DEPLOY_HOST DEPLOY_SSH_KEY ENV_FILE; do
             if [ -z "${!var:-}" ]; then
               echo "::error::Missing required secret: $var"
               missing=1
@@ -85,7 +85,7 @@ jobs:
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
           target: ${{ env.DEPLOY_PATH }}/.incoming
@@ -98,7 +98,7 @@ jobs:
           ENV_FILE: ${{ secrets.ENV_FILE }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
           script_stop: true
