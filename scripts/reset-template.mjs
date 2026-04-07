@@ -30,7 +30,7 @@ const runCommand = (command) => {
 const ensureTemplateStructure = async () => {
   const requiredPaths = [
     path.join(rootDir, 'package.json'),
-    path.join(rootDir, '.github', 'workflows', 'backend-ci.yml'),
+    path.join(rootDir, '.github', 'workflows', 'backend-deploy.yml'),
     path.join(rootDir, 'reset-template.config.json'),
     path.join(rootDir, '.git'),
   ];

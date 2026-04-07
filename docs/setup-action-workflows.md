@@ -47,8 +47,8 @@ In this default flow, you do **not** need to derive a public key.
 ### 1.5 Create deploy directory
 
 ```bash
-sudo mkdir -p /opt/apps/skillbridge-backend
-sudo chown -R ubuntu:ubuntu /opt/apps/skillbridge-backend
+sudo mkdir -p /opt/apps/<repo-name>
+sudo chown -R ubuntu:ubuntu /opt/apps/<repo-name>
 ```
 
 If you use a different `DEPLOY_USER`, replace `ubuntu:ubuntu` with that user.
@@ -149,7 +149,7 @@ If deploy or health check fails:
 On EC2, run:
 
 ```bash
-cd /opt/apps/skillbridge-backend
+cd /opt/apps/<repo-name>
 docker compose ps
 docker compose logs --tail=100 api
 curl -fsS http://localhost:3000/api/health
