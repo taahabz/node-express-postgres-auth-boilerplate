@@ -111,8 +111,8 @@ jobs:
             done
 
             docker build --target builder -t backend-workflow-builder .
+            docker run --rm --env-file .env backend-workflow-builder npm run prisma:migrate:status
             docker run --rm --env-file .env backend-workflow-builder npm run prisma:migrate:deploy
-            docker run --rm --env-file .env backend-workflow-builder npm run prisma:push
             docker compose up -d --build --remove-orphans
             docker compose ps
 

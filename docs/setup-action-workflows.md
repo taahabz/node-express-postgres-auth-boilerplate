@@ -114,8 +114,8 @@ npm run prisma:generate
 
 In production deploy, workflow runs:
 
+- `npm run prisma:migrate:status`
 - `npm run prisma:migrate:deploy`
-- `npm run prisma:push`
 
 ---
 
