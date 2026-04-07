@@ -1,45 +1,26 @@
-# EC2 deploy guide (simple)
+# EC2 deploy guide (detailed flow)
 
-This project deploys with one workflow:
+This project uses one workflow: [../.github/workflows/backend-deploy.yml](../.github/workflows/backend-deploy.yml).
 
-- [`.github/workflows/backend-deploy.yml`](../.github/workflows/backend-deploy.yml)
-
-That workflow runs checks, syncs Prisma, deploys containers, and checks health.
-
----
-
-## 1) Required GitHub secrets
-
-Add these in GitHub repo settings → Secrets and variables → Actions:
-
-- `DEPLOY_HOST` (EC2 public IP or DNS)
-- `DEPLOY_USER` (usually `deploy` or `ubuntu`)
-- `DEPLOY_SSH_KEY` (your EC2 private key content, including BEGIN/END lines)
-
-Optional:
-
-- `DEPLOY_PORT` (default `22`)
-- `DEPLOY_PATH` (default `/opt/apps/<repo-name>`)
-
-No host fingerprint is required.
+The workflow runs in 2 jobs:
+1. `test` → lint, typecheck, app build, Docker build validation.
+2. `push` → upload source, write `.env` from secret, run Prisma migrate deploy, deploy containers, health check, and auto-rollback if deploy fails.
 
 ---
 
-## 2) EC2 server setup (one-time)
+## 1) One-time EC2 setup
 
-### 2.1 Launch EC2
-
+### 1.1 Launch instance
 - Ubuntu 22.04 LTS
 - At least `t3.small`
 - At least `20 GB` disk
 
-### 2.2 Security group
+### 1.2 Security group rules
+- Allow `22/tcp` from your IP only
+- Allow `80/tcp` and `443/tcp` as needed
+- Do **not** expose Redis (`6379`)
 
-- allow `22/tcp` from your IP
-- allow `80/tcp` and `443/tcp` if needed
-- do not expose `6379`
-
-### 2.3 Install Docker + Compose
+### 1.3 Install Docker + Compose plugin
 
 ```bash
 sudo apt-get update
@@ -53,7 +34,7 @@ sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-### 2.4 Create deploy user
+### 1.4 Create deploy user
 
 ```bash
 sudo adduser --disabled-password --gecos "" deploy
@@ -63,8 +44,7 @@ sudo chown -R deploy:deploy /home/deploy/.ssh
 sudo chmod 700 /home/deploy/.ssh
 ```
 
-### 2.5 Add your SSH public key
-
+### 1.5 Add SSH key for GitHub Actions
 As `deploy` user:
 
 ```bash
@@ -74,19 +54,42 @@ nano ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-Paste the public key that matches your `DEPLOY_SSH_KEY`.
+Paste the **public key** for the private key that will be saved in `DEPLOY_SSH_KEY` secret.
 
-### 2.6 Create deploy folder + env file
+### 1.6 Create deploy directory
 
 ```bash
 sudo mkdir -p /opt/apps/skillbridge-backend
 sudo chown -R deploy:deploy /opt/apps/skillbridge-backend
-cd /opt/apps/skillbridge-backend
-cp /path/to/repo/example.env .env
 ```
 
-Set required `.env` values:
+If you use custom `DEPLOY_PATH`, create and own that path instead.
 
+---
+
+## 2) Configure GitHub Actions secrets
+
+Open: GitHub repo → Settings → Secrets and variables → Actions.
+
+### Required secrets
+- `DEPLOY_HOST`: EC2 public IP or DNS
+- `DEPLOY_USER`: SSH user on EC2 (usually `deploy`)
+- `DEPLOY_SSH_KEY`: full private key content (including BEGIN/END lines)
+- `ENV_FILE`: full production `.env` content (multiline)
+
+### Optional secrets
+- `DEPLOY_PORT`: SSH port (default `22`)
+- `DEPLOY_PATH`: app path on EC2 (default `/opt/apps/<repo-name>`)
+
+No host fingerprint secret is required in this setup.
+
+---
+
+## 3) Build the `ENV_FILE` secret correctly
+
+`ENV_FILE` is written to `<DEPLOY_PATH>/.env` on **every** deploy.
+
+At minimum include:
 - `DATABASE_URL`
 - `DIRECT_URL`
 - `JWT_SECRET`
@@ -94,9 +97,16 @@ Set required `.env` values:
 - `REDIS_URL`
 - `CORS_ORIGIN`
 
+You can include all other production values too (mail provider keys, frontend URLs, etc.).
+
+Important:
+- Keep one `KEY=value` per line.
+- Do not wrap the whole file in quotes.
+- Use real production values; do not paste `example.env` placeholders.
+
 ---
 
-## 3) Keep DB and migrations in sync
+## 4) Keep Prisma migrations in sync
 
 When schema changes locally:
 
@@ -112,45 +122,57 @@ npm run prisma:generate
    - `prisma/schema.prisma`
    - `prisma/migrations/**`
 
-In production deploy, workflow runs:
-
+Production deploy runs:
 - `npm run prisma:migrate:status`
 - `npm run prisma:migrate:deploy`
 
----
-
-## 4) Deploy
-
-Push to `main`.
-
-That’s it.
-
-The workflow will:
-
-1. Validate secrets
-2. Lint + typecheck + build
-3. Upload source to EC2
-4. Run Prisma sync on EC2
-5. Restart containers
-6. Check `/api/health`
+So staging/prod stay aligned with committed migration files.
 
 ---
 
-## 5) Verify quickly
+## 5) Deploy flow (what happens on every push to `main`)
 
-On EC2:
+1. `test` job runs checks and build.
+2. If `test` passes, `push` job starts.
+3. Source is uploaded to `<DEPLOY_PATH>/.incoming`.
+4. Current deployed files are snapshotted to `<DEPLOY_PATH>/.rollback/previous`.
+5. Uploaded files replace current files.
+6. `.env` is written from `ENV_FILE` secret.
+7. Prisma migration status + deploy run in containerized builder.
+8. `docker compose up -d --build --remove-orphans` runs.
+9. Health check runs at `http://localhost:3000/api/health`.
+
+### Automatic rollback behavior
+If deploy or health check fails:
+- Workflow restores snapshot from `.rollback/previous`
+- Rebuilds and starts previous version
+- Re-checks health
+- Job still exits failed so you can investigate
+
+---
+
+## 6) Post-deploy verification
+
+On EC2, run:
 
 ```bash
+cd /opt/apps/skillbridge-backend
 docker compose ps
 docker compose logs --tail=100 api
 curl -fsS http://localhost:3000/api/health
 ```
 
+If you use custom `DEPLOY_PATH`, change directory accordingly.
+
 ---
 
-## 6) If deploy fails
+## 7) Troubleshooting checklist
 
-- Check GitHub Actions logs first
-- Confirm secrets are correct
-- Confirm `.env` exists in deploy path
-- Confirm DB/Redis connectivity
+1. Check GitHub Actions logs for failed step.
+2. Confirm all required secrets exist and are non-empty.
+3. Confirm `DEPLOY_USER` can SSH and run Docker (`docker ps` without sudo).
+4. Confirm `ENV_FILE` contains required variables.
+5. Confirm DB and Redis endpoints are reachable from EC2.
+6. If rollback also fails, inspect:
+   - `<DEPLOY_PATH>/.rollback/previous`
+   - `docker compose logs --tail=200 api`

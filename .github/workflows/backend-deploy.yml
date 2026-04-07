@@ -7,39 +7,14 @@ on:
       - main
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    concurrency:
-      group: backend-deploy-ec2
-      cancel-in-progress: true
-    env:
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || format('/opt/apps/{0}', github.event.repository.name) }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Validate required secrets
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          missing=0
-
-          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY; do
-            if [ -z "${!var:-}" ]; then
-              echo "::error::Missing required secret: $var"
-              missing=1
-            fi
-          done
-
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -70,6 +45,42 @@ jobs:
           file: ./Dockerfile
           push: false
 
+  push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: backend-deploy-ec2
+      cancel-in-progress: true
+    env:
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || format('/opt/apps/{0}', github.event.repository.name) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          set -euo pipefail
+          missing=0
+
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY ENV_FILE; do
+            if [ -z "${!var:-}" ]; then
+              echo "::error::Missing required secret: $var"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Upload app source
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -77,30 +88,62 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
-          target: ${{ env.DEPLOY_PATH }}
+          target: ${{ env.DEPLOY_PATH }}/.incoming
           source: Dockerfile,package.json,package-lock.json,tsconfig.json,prisma,openapi,src,docker-compose.yml
 
-      - name: Sync database and deploy on EC2
+      - name: Sync database, deploy, and auto-rollback on failure
         uses: appleboy/ssh-action@v1.2.0
         env:
           DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+          ENV_FILE: ${{ secrets.ENV_FILE }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
           script_stop: true
-          envs: DEPLOY_PATH
+          envs: DEPLOY_PATH,ENV_FILE
           script: |
             set -euo pipefail
 
             mkdir -p "$DEPLOY_PATH"
             cd "$DEPLOY_PATH"
 
-            if [ ! -f .env ]; then
-              echo "Missing .env in $DEPLOY_PATH"
+            INCOMING_PATH="$DEPLOY_PATH/.incoming"
+            BACKUP_PATH="$DEPLOY_PATH/.rollback/previous"
+            SYNC_ITEMS="Dockerfile package.json package-lock.json tsconfig.json prisma openapi src docker-compose.yml"
+
+            if [ ! -d "$INCOMING_PATH" ]; then
+              echo "Uploaded source directory not found: $INCOMING_PATH"
               exit 1
             fi
+
+            rm -rf "$BACKUP_PATH"
+            mkdir -p "$BACKUP_PATH"
+
+            for item in $SYNC_ITEMS; do
+              if [ -e "$DEPLOY_PATH/$item" ]; then
+                mkdir -p "$(dirname "$BACKUP_PATH/$item")"
+                cp -a "$DEPLOY_PATH/$item" "$BACKUP_PATH/$item"
+              fi
+            done
+
+            for item in $SYNC_ITEMS; do
+              if [ ! -e "$INCOMING_PATH/$item" ]; then
+                echo "Missing uploaded item: $item"
+                exit 1
+              fi
+              rm -rf "$DEPLOY_PATH/$item"
+              cp -a "$INCOMING_PATH/$item" "$DEPLOY_PATH/$item"
+            done
+
+            if [ -z "${ENV_FILE:-}" ]; then
+              echo "Missing ENV_FILE secret content"
+              exit 1
+            fi
+
+            printf '%s\n' "$ENV_FILE" > .env
+            chmod 600 .env
 
             required_vars="DATABASE_URL DIRECT_URL JWT_SECRET JWT_REFRESH_SECRET REDIS_URL CORS_ORIGIN"
             for var in $required_vars; do
@@ -110,22 +153,43 @@ jobs:
               fi
             done
 
-            docker build --target builder -t backend-workflow-builder .
-            docker run --rm --env-file .env backend-workflow-builder npm run prisma:migrate:status
-            docker run --rm --env-file .env backend-workflow-builder npm run prisma:migrate:deploy
-            docker compose up -d --build --remove-orphans
-            docker compose ps
+            deploy_and_verify() {
+              docker build --target builder -t backend-workflow-builder .
+              docker run --rm --env-file .env backend-workflow-builder npm run prisma:migrate:status
+              docker run --rm --env-file .env backend-workflow-builder npm run prisma:migrate:deploy
+              docker compose up -d --build --remove-orphans
+              docker compose ps
+              curl -fsS http://localhost:3000/api/health
+            }
 
+            rollback() {
+              echo "Starting rollback to previous deployment..."
+
+              if [ ! -f "$BACKUP_PATH/docker-compose.yml" ]; then
+                echo "No previous deployment snapshot found. Rollback skipped."
+                return 1
+              fi
+
+              for item in $SYNC_ITEMS; do
+                rm -rf "$DEPLOY_PATH/$item"
+                if [ -e "$BACKUP_PATH/$item" ]; then
+                  cp -a "$BACKUP_PATH/$item" "$DEPLOY_PATH/$item"
+                fi
+              done
+
+              docker compose up -d --build --remove-orphans
+              docker compose ps
+              curl -fsS http://localhost:3000/api/health
+              echo "Rollback completed and health check passed."
+            }
+
+            if ! deploy_and_verify; then
+              echo "Deployment failed. Attempting automatic rollback..."
+              if ! rollback; then
+                echo "Rollback did not complete successfully. Manual intervention may be required."
+              fi
+              exit 1
+            fi
+
+            rm -rf "$INCOMING_PATH"
             docker image prune -f
-
-      - name: Check health
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT != '' && secrets.DEPLOY_PORT || '22' }}
-          script_stop: true
-          script: |
-            set -euo pipefail
-            curl -fsS http://localhost:3000/api/health
